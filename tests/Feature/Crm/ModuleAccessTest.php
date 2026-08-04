@@ -15,9 +15,10 @@ class ModuleAccessTest extends TestCase
     public function test_owner_can_render_all_mvp_modules(): void
     {
         $owner = User::factory()->create();
+        $team = $owner->currentTeam;
 
         foreach (['dashboard', 'clients.index', 'services.index', 'schedule.index', 'finance.index'] as $route) {
-            $this->actingAs($owner)->get(route($route))->assertOk();
+            $this->actingAs($owner)->get(route($route, ['current_team' => $team->slug]))->assertOk();
         }
     }
 

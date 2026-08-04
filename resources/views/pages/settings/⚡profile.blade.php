@@ -1,21 +1,28 @@
 <?php
 
 use App\Concerns\ProfileValidationRules;
+use App\Rules\BrazilianPhone as ValidBrazilianPhone;
+use App\Support\BrazilianDocument;
+use App\Support\BrazilianPhone;
 /* @chisel-email-verification */
-use Illuminate\Contracts\Auth\MustVerifyEmail;
-/* @end-chisel-email-verification */
 use Flux\Flux;
+/* @end-chisel-email-verification */
+use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Session;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
-new #[Title('Profile settings')] class extends Component {
+new #[Title('Perfil pessoal')] class extends Component
+{
     use ProfileValidationRules;
 
     public string $name = '';
+
     public string $email = '';
+
+    public string $phone = '';
 
     /**
      * Mount the component.
@@ -24,6 +31,7 @@ new #[Title('Profile settings')] class extends Component {
     {
         $this->name = Auth::user()->name;
         $this->email = Auth::user()->email;
+        $this->phone = BrazilianPhone::format(Auth::user()->phone ?? Auth::user()->currentTeam?->phone ?? '');
     }
 
     /**
@@ -33,9 +41,16 @@ new #[Title('Profile settings')] class extends Component {
     {
         $user = Auth::user();
 
-        $validated = $this->validate($this->profileRules($user->id));
+        $validated = $this->validate([
+            ...$this->profileRules($user->id),
+            'phone' => ['nullable', 'string', new ValidBrazilianPhone],
+        ]);
 
-        $user->fill($validated);
+        $user->fill([
+            'name' => $validated['name'],
+            'email' => $validated['email'],
+            'phone' => $validated['phone'] ? BrazilianPhone::digits($validated['phone']) : null,
+        ]);
 
         if ($user->isDirty('email')) {
             $user->email_verified_at = null;
@@ -55,7 +70,11 @@ new #[Title('Profile settings')] class extends Component {
         $user = Auth::user();
 
         if ($user->hasVerifiedEmail()) {
-            $this->redirectIntended(default: route('dashboard', absolute: false));
+            $default = $user->currentTeam
+                ? route('dashboard', ['current_team' => $user->currentTeam->slug], false)
+                : route('onboarding.establishment', absolute: false);
+
+            $this->redirectIntended(default: $default);
 
             return;
         }
@@ -77,20 +96,42 @@ new #[Title('Profile settings')] class extends Component {
         return ! Auth::user() instanceof MustVerifyEmail
             || (Auth::user() instanceof MustVerifyEmail && Auth::user()->hasVerifiedEmail());
     }
+
+    public function cpf(): string
+    {
+        $user = Auth::user();
+        $team = $user->currentTeam;
+
+        $cpf = $user->cpf
+            ?? $team?->responsible_cpf
+            ?? ($team?->document_type === 'CPF' ? $team->document_number : null);
+
+        return $cpf ? BrazilianDocument::formatCpf($cpf) : 'Não informado';
+    }
+
+    public function roleLabel(): string
+    {
+        $user = Auth::user();
+        $team = $user->currentTeam;
+
+        return $team ? ($user->teamRole($team)?->label() ?? 'Sem função') : 'Sem estabelecimento';
+    }
     /* @end-chisel-email-verification */
 }; ?>
 
 <section class="w-full">
     @include('partials.settings-heading')
 
-    <flux:heading class="sr-only">{{ __('Profile settings') }}</flux:heading>
+    <flux:heading class="sr-only">Perfil pessoal</flux:heading>
 
-    <x-pages::settings.layout :heading="__('Profile')" :subheading="__('Update your name and email address')">
+    <x-pages::settings.layout heading="Perfil pessoal" subheading="Atualize seus dados pessoais de acesso">
         <form wire:submit="updateProfileInformation" class="my-6 w-full space-y-6">
-            <flux:input wire:model="name" :label="__('Name')" type="text" required autofocus autocomplete="name" />
+            <flux:input wire:model="name" label="Nome" type="text" required autofocus autocomplete="name" />
+
+            <flux:input :value="$this->cpf()" label="CPF" type="text" readonly disabled />
 
             <div>
-                <flux:input wire:model="email" :label="__('Email')" type="email" required autocomplete="email" />
+                <flux:input wire:model="email" label="E-mail" type="email" required autocomplete="email" />
 
                 {{-- @chisel-email-verification --}}
                 @if ($this->hasUnverifiedEmail)
@@ -112,6 +153,10 @@ new #[Title('Profile settings')] class extends Component {
                 @endif
                 {{-- @end-chisel-email-verification --}}
             </div>
+
+            <flux:input wire:model="phone" label="Telefone" inputmode="tel" maxlength="15" placeholder="(00) 00000-0000" x-on:input="window.BelezaMasks.apply($event, 'phone')" />
+
+            <flux:input :value="$this->roleLabel()" label="Função" type="text" readonly disabled />
 
             <div class="flex items-center gap-4">
                 <div class="flex items-center justify-end">

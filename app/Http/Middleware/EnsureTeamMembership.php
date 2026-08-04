@@ -72,6 +72,10 @@ class EnsureTeamMembership
             $team = Team::where('slug', $team)->first();
         }
 
-        return $team;
+        if ($team instanceof Team) {
+            return $team;
+        }
+
+        return $request->user()?->currentTeam;
     }
 }

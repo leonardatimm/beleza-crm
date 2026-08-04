@@ -46,4 +46,9 @@ class BrazilianDocumentTest extends TestCase
         $this->assertFalse(BrazilianDocument::isValidCnpj('11.111.111/1111-11'));
         $this->assertFalse(BrazilianDocument::isValidCnpj('04.252.011/0001-11'));
     }
+
+    public function test_formats_cpf(): void
+    {
+        $this->assertSame('529.982.247-25', BrazilianDocument::formatCpf('52998224725'));
+    }
 }

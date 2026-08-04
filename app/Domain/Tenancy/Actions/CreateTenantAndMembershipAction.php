@@ -56,7 +56,13 @@ class CreateTenantAndMembershipAction
                 'role' => TeamRole::Owner,
             ]);
 
-            $lockedUser->forceFill(['current_team_id' => $tenant->id])->save();
+            $lockedUser->forceFill([
+                'cpf' => $isIndividual
+                    ? BrazilianDocument::digits($data->cpf)
+                    : BrazilianDocument::digits($data->responsibleCpf),
+                'phone' => BrazilianDocument::digits($data->phone),
+                'current_team_id' => $tenant->id,
+            ])->save();
 
             $user->forceFill(['current_team_id' => $tenant->id]);
             $user->setRelation('currentTeam', $tenant);

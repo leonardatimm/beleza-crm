@@ -4,6 +4,7 @@ namespace App\Http\Requests\Onboarding;
 
 use App\Domain\Tenancy\Enums\BusinessType;
 use App\Domain\Tenancy\Enums\DocumentType;
+use App\Rules\BrazilianPhone;
 use App\Rules\Cnpj;
 use App\Rules\Cpf;
 use App\Rules\UniqueTenantDocument;
@@ -36,13 +37,7 @@ class StoreTenantOnboardingRequest extends FormRequest
             'cnpj' => [Rule::excludeIf(! $isCompany), 'required', 'string', new Cnpj, new UniqueTenantDocument(DocumentType::Cnpj)],
             'legal_name' => [Rule::excludeIf(! $isCompany), 'required', 'string', 'max:255'],
             'trade_name' => [Rule::excludeIf(! $isCompany), 'required', 'string', 'max:255'],
-            'phone' => ['required', 'string', function (string $attribute, mixed $value, \Closure $fail): void {
-                $digits = preg_replace('/\D+/', '', (string) $value) ?? '';
-
-                if (! in_array(strlen($digits), [10, 11], true)) {
-                    $fail('O campo telefone/WhatsApp deve conter DDD e um número válido.');
-                }
-            }],
+            'phone' => ['required', 'string', new BrazilianPhone],
             'responsible_cpf' => [Rule::excludeIf(! $isCompany), 'required', 'string', new Cpf],
         ];
     }

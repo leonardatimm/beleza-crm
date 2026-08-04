@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Clients;
 
 use App\Models\Customer;
+use App\Rules\BrazilianPhone;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreCustomerRequest extends FormRequest
@@ -15,6 +16,6 @@ class StoreCustomerRequest extends FormRequest
     /** @return array<string, array<int, mixed>> */
     public function rules(): array
     {
-        return ['name' => ['required', 'string', 'max:255'], 'phone' => ['nullable', 'string', 'max:30'], 'email' => ['nullable', 'email', 'max:255'], 'birth_date' => ['nullable', 'date', 'before:today'], 'notes' => ['nullable', 'string', 'max:2000']];
+        return ['name' => ['required', 'string', 'max:255'], 'phone' => ['nullable', 'string', new BrazilianPhone], 'email' => ['nullable', 'email', 'max:255'], 'birth_date' => ['nullable', 'date', 'before:today'], 'notes' => ['nullable', 'string', 'max:2000']];
     }
 }

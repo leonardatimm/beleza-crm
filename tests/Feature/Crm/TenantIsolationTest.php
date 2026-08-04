@@ -32,6 +32,21 @@ class TenantIsolationTest extends TestCase
         $this->assertFalse(Gate::forUser($owner)->allows('view', $foreign));
     }
 
+    public function test_tenant_is_resolved_from_authenticated_users_current_team_when_context_is_empty(): void
+    {
+        $owner = User::factory()->create();
+        $team = $this->createMembership($owner, TeamRole::Owner);
+
+        app(TenantContext::class)->clear();
+
+        $this->actingAs($owner);
+
+        $customer = Customer::create(['name' => 'Thalles']);
+
+        $this->assertSame($team->id, $customer->tenant_id);
+        $this->assertSame(['Thalles'], Customer::query()->pluck('name')->all());
+    }
+
     public function test_professional_cannot_access_financial_module(): void
     {
         $professional = User::factory()->create();

@@ -55,7 +55,7 @@
 
         @if ($business_type === 'individual')
             <flux:input wire:model="cpf" label="CPF" inputmode="numeric" placeholder="000.000.000-00" x-on:input="window.BelezaMasks.apply($event, 'cpf')" required />
-            <flux:input wire:model="professional_name" label="Nome do profissional" autocomplete="name" required />
+            <flux:input wire:model="professional_name" label="Nome da empresa" autocomplete="name" required />
         @else
             <flux:input wire:model="cnpj" label="CNPJ" inputmode="numeric" placeholder="00.000.000/0000-00" x-on:input="window.BelezaMasks.apply($event, 'cnpj')" required />
             <flux:input wire:model="legal_name" label="Razão social" required />

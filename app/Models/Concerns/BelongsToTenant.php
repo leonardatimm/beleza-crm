@@ -6,6 +6,8 @@ use App\Domain\Tenancy\TenantContext;
 use App\Models\Scopes\TenantScope;
 use App\Models\Team;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Auth;
+use LogicException;
 
 trait BelongsToTenant
 {
@@ -18,6 +20,18 @@ trait BelongsToTenant
 
             if (empty($model->tenant_id) && $context->hasTenant()) {
                 $model->tenant_id = $context->id();
+            }
+
+            if (empty($model->tenant_id)) {
+                $user = Auth::user();
+
+                if ($user?->current_team_id && $context->setFromUser($user)) {
+                    $model->tenant_id = $context->id();
+                }
+            }
+
+            if (empty($model->tenant_id)) {
+                throw new LogicException('Nenhum estabelecimento ativo foi definido para criar este registro.');
             }
         });
     }

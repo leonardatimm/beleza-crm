@@ -9,7 +9,8 @@ use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
-new #[Title('Teams')] class extends Component {
+new #[Title('Estabelecimentos')] class extends Component
+{
     public TeamInvitation $invitation;
 
     public function mount(TeamInvitation $invitation): void
@@ -25,7 +26,7 @@ new #[Title('Teams')] class extends Component {
 
         $this->validateInvitation($user, $this->invitation);
 
-        DB::transaction(function () use ($user) {
+        $team = DB::transaction(function () use ($user) {
             $team = $this->invitation->team;
 
             $membership = $team->memberships()->firstOrCreate(
@@ -36,11 +37,13 @@ new #[Title('Teams')] class extends Component {
             $this->invitation->update(['accepted_at' => now()]);
 
             $user->switchTeam($team);
+
+            return $team;
         });
 
         session()->flash('team-invitation-accepted', true);
 
-        $this->redirectRoute('dashboard', navigate: true);
+        $this->redirectRoute('dashboard', ['current_team' => $team->slug], navigate: true);
     }
 
     private function validateInvitation(User $user, TeamInvitation $invitation): void

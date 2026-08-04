@@ -34,6 +34,19 @@ npm run build
 
 Usuário demonstrativo criado pelo seeder: `demo@belezacrm.test` / `password`.
 
+### Supabase
+
+Em ambientes conectados ao Supabase, use o Session Pooler exibido em **Connect** no painel do projeto e mantenha as tabelas da aplicação no schema privado `crm`:
+
+```dotenv
+DB_CONNECTION=pgsql
+DB_URL=postgresql://postgres.PROJECT_REF:SENHA@REGIAO.pooler.supabase.com:5432/postgres
+DB_SCHEMA=crm,public,extensions
+DB_SSLMODE=require
+```
+
+O host direto `db.PROJECT_REF.supabase.co` exige conectividade IPv6 ou o add-on IPv4. O Session Pooler é a opção recomendada para o backend Laravel em redes IPv4.
+
 ## Qualidade
 
 ```bash

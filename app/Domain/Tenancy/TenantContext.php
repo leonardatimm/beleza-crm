@@ -3,6 +3,7 @@
 namespace App\Domain\Tenancy;
 
 use App\Models\Team;
+use App\Models\User;
 use LogicException;
 
 class TenantContext
@@ -17,6 +18,19 @@ class TenantContext
     public function clear(): void
     {
         $this->tenant = null;
+    }
+
+    public function setFromUser(User $user): bool
+    {
+        $tenant = $user->currentTeam;
+
+        if (! $tenant || ! $user->belongsToTeam($tenant)) {
+            return false;
+        }
+
+        $this->set($tenant);
+
+        return true;
     }
 
     public function hasTenant(): bool

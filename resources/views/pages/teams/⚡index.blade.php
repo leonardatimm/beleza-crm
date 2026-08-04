@@ -12,7 +12,8 @@ use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
-new #[Title('Teams')] class extends Component {
+new #[Title('Estabelecimentos')] class extends Component
+{
     public string $name = '';
 
     public function createTeam(CreateTeam $createTeam): void

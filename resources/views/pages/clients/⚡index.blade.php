@@ -1,19 +1,28 @@
 <?php
 
 use App\Models\Customer;
+use App\Rules\BrazilianPhone as ValidBrazilianPhone;
+use App\Support\BrazilianPhone;
 use Flux\Flux;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
-new #[Title('Clientes')] class extends Component {
+new #[Title('Clientes')] class extends Component
+{
     public string $search = '';
+
     public ?int $editingId = null;
+
     public string $name = '';
+
     public string $phone = '';
+
     public string $email = '';
+
     public string $birthDate = '';
+
     public string $notes = '';
 
     #[Computed]
@@ -35,7 +44,7 @@ new #[Title('Clientes')] class extends Component {
     {
         $data = $this->validate([
             'name' => ['required', 'string', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:30'],
+            'phone' => ['nullable', 'string', new ValidBrazilianPhone],
             'email' => ['nullable', 'email', 'max:255'],
             'birthDate' => ['nullable', 'date', 'before:today'],
             'notes' => ['nullable', 'string', 'max:2000'],
@@ -45,7 +54,7 @@ new #[Title('Clientes')] class extends Component {
         Gate::authorize($customer->exists ? 'update' : 'create', $customer->exists ? $customer : Customer::class);
         $customer->fill([
             'name' => trim($data['name']),
-            'phone' => $data['phone'] ?: null,
+            'phone' => $data['phone'] ? BrazilianPhone::digits($data['phone']) : null,
             'email' => $data['email'] ?: null,
             'birth_date' => $data['birthDate'] ?: null,
             'notes' => $data['notes'] ?: null,
@@ -62,7 +71,7 @@ new #[Title('Clientes')] class extends Component {
         Gate::authorize('update', $customer);
         $this->editingId = $customer->id;
         $this->name = $customer->name;
-        $this->phone = $customer->phone ?? '';
+        $this->phone = $customer->phone ? BrazilianPhone::format($customer->phone) : '';
         $this->email = $customer->email ?? '';
         $this->birthDate = $customer->birth_date?->format('Y-m-d') ?? '';
         $this->notes = $customer->notes ?? '';
@@ -95,7 +104,7 @@ new #[Title('Clientes')] class extends Component {
             <div class="divide-y divide-violet-50 dark:divide-violet-950">
                 @forelse($this->customers as $customer)
                     <div class="flex items-center justify-between gap-4 p-4" wire:key="customer-{{ $customer->id }}">
-                        <div class="min-w-0"><p class="truncate font-semibold text-zinc-900 dark:text-zinc-50">{{ $customer->name }}</p><p class="truncate text-sm text-zinc-500 dark:text-zinc-400">{{ $customer->phone ?: $customer->email ?: 'Sem contato informado' }}</p></div>
+                        <div class="min-w-0"><p class="truncate font-semibold text-zinc-900 dark:text-zinc-50">{{ $customer->name }}</p><p class="truncate text-sm text-zinc-500 dark:text-zinc-400">{{ $customer->phone ? BrazilianPhone::format($customer->phone) : ($customer->email ?: 'Sem contato informado') }}</p></div>
                         <div class="flex items-center gap-2">
                             @unless($customer->is_active)<flux:badge color="zinc">Inativo</flux:badge>@endunless
                             <flux:button size="sm" variant="ghost" icon="pencil" wire:click="edit({{ $customer->id }})" aria-label="Editar cliente" />
@@ -111,7 +120,7 @@ new #[Title('Clientes')] class extends Component {
         <form wire:submit="save" class="h-fit space-y-4 rounded-2xl border border-violet-100 bg-white p-5 shadow-sm dark:border-violet-950 dark:bg-zinc-950">
             <flux:heading size="lg">{{ $editingId ? 'Editar cliente' : 'Novo cliente' }}</flux:heading>
             <flux:input wire:model="name" label="Nome" required />
-            <flux:input wire:model="phone" label="Telefone" placeholder="(11) 99999-9999" />
+            <flux:input wire:model="phone" label="Telefone" inputmode="tel" maxlength="15" placeholder="(11) 99999-9999" x-on:input="window.BelezaMasks.apply($event, 'phone')" />
             <flux:input wire:model="email" label="E-mail" type="email" />
             <flux:input wire:model="birthDate" label="Nascimento" type="date" />
             <flux:textarea wire:model="notes" label="Observações" rows="3" />

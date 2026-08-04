@@ -10,7 +10,7 @@
 <body class="min-h-screen bg-gradient-to-b from-violet-50 via-white to-white text-zinc-900">
     <header class="mx-auto flex max-w-7xl items-center justify-between px-5 py-6 lg:px-8">
         <a href="/" class="flex items-center gap-3 font-bold"><span class="flex size-10 items-center justify-center rounded-xl bg-violet-600 text-white"><x-app-logo-icon class="size-6" /></span><span>Beleza CRM</span></a>
-        <nav class="flex items-center gap-3">@auth<a href="{{ auth()->user()->currentTeam ? route('dashboard') : route('onboarding.establishment') }}" class="rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white">{{ auth()->user()->currentTeam ? 'Abrir painel' : 'Continuar cadastro' }}</a>@else<a href="{{ route('login') }}" class="px-3 py-2 text-sm font-semibold text-zinc-700">Entrar</a><a href="{{ route('register') }}" class="rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-violet-200">Assinar</a>@endauth</nav>
+        <nav class="flex items-center gap-3">@auth<a href="{{ auth()->user()->currentTeam ? route('dashboard', ['current_team' => auth()->user()->currentTeam->slug]) : route('onboarding.establishment') }}" class="rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white">{{ auth()->user()->currentTeam ? 'Abrir painel' : 'Continuar cadastro' }}</a>@else<a href="{{ route('login') }}" class="px-3 py-2 text-sm font-semibold text-zinc-700">Entrar</a><a href="{{ route('register') }}" class="rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-violet-200">Assinar</a>@endauth</nav>
     </header>
     <main>
         <section class="mx-auto grid max-w-7xl items-center gap-12 px-5 py-16 lg:grid-cols-2 lg:px-8 lg:py-24">

@@ -3,6 +3,8 @@
 use Illuminate\Support\Str;
 use Pdo\Mysql;
 
+$databaseSearchPath = env('DB_SCHEMA', 'public');
+
 return [
 
     /*
@@ -95,7 +97,9 @@ return [
             'charset' => env('DB_CHARSET', 'utf8'),
             'prefix' => '',
             'prefix_indexes' => true,
-            'search_path' => 'public',
+            'search_path' => is_string($databaseSearchPath)
+                ? array_filter(explode(',', $databaseSearchPath))
+                : ['public'],
             'sslmode' => env('DB_SSLMODE', 'prefer'),
         ],
 

@@ -35,6 +35,17 @@ final class BrazilianDocument
         return true;
     }
 
+    public static function formatCpf(mixed $value): string
+    {
+        $digits = self::digits($value);
+
+        if (strlen($digits) !== 11) {
+            return (string) $value;
+        }
+
+        return preg_replace('/^(\d{3})(\d{3})(\d{3})(\d{2})$/', '$1.$2.$3-$4', $digits) ?? $digits;
+    }
+
     public static function isValidCnpj(mixed $value): bool
     {
         $digits = self::digits($value);
