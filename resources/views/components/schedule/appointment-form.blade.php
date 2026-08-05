@@ -17,7 +17,11 @@
         @endforeach
     </flux:select>
 
-    <flux:input wire:model="startsAt" type="datetime-local" label="Data e hora" required />
+    <flux:select wire:model.live="appointmentDate" label="Data" placeholder="Selecione o dia" required>
+        @foreach($this->appointmentDates as $date)
+            <flux:select.option value="{{ $date['value'] }}">{{ $date['label'] }}</flux:select.option>
+        @endforeach
+    </flux:select>
 
     <fieldset>
         <legend class="mb-2 text-sm font-medium text-zinc-800 dark:text-zinc-200">Serviços</legend>
@@ -38,6 +42,22 @@
             <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
         @enderror
     </fieldset>
+
+    <div>
+        <flux:select wire:model.live="appointmentTime" label="Horário" placeholder="Selecione o horário" required>
+            @foreach($this->availableTimeSlots as $slot)
+                <flux:select.option value="{{ $slot['value'] }}">{{ $slot['label'] }}</flux:select.option>
+            @endforeach
+        </flux:select>
+        @if($this->selectedServiceDuration > 0)
+            <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Duração selecionada: {{ $this->selectedServiceDuration }} min. Horários indisponíveis não são exibidos.</p>
+        @else
+            <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Os horários são exibidos a cada 30 minutos. Selecione um serviço para validar a duração.</p>
+        @endif
+        @error('appointmentTime')
+            <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
+        @enderror
+    </div>
 
     <flux:textarea wire:model="notes" label="Observações" rows="2" />
 

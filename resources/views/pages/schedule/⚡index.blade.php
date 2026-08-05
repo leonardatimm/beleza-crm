@@ -2,6 +2,7 @@
 
 use App\Domain\Scheduling\Actions\CancelAppointment;
 use App\Domain\Scheduling\Actions\CompleteAppointment;
+use App\Domain\Scheduling\Actions\FindAvailableAppointmentSlots;
 use App\Domain\Scheduling\Actions\ScheduleAppointment;
 use App\Domain\Scheduling\Data\ScheduleAppointmentData;
 use App\Domain\Scheduling\Enums\AppointmentStatus;
@@ -15,6 +16,8 @@ use Carbon\CarbonInterface;
 use Flux\Flux;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -25,7 +28,9 @@ new #[Title('Agenda')] class extends Component
 
     public string $viewMode = 'day';
 
-    public string $startsAt = '';
+    public string $appointmentDate = '';
+
+    public string $appointmentTime = '';
 
     public string $customerId = '';
 
@@ -42,7 +47,8 @@ new #[Title('Agenda')] class extends Component
         $timezone = Auth::user()->currentTeam->timezone;
         $today = now($timezone);
         $this->selectedDate = $today->toDateString();
-        $this->startsAt = $today->addHour()->startOfHour()->format('Y-m-d\TH:i');
+        $this->appointmentDate = $today->toDateString();
+        $this->appointmentTime = $today->addHour()->startOfHour()->format('H:i');
         $profile = ProfessionalProfile::query()->where('user_id', Auth::id())->first();
         $this->professionalProfileId = (string) ($profile?->id ?? ProfessionalProfile::query()->value('id') ?? '');
     }
@@ -63,6 +69,52 @@ new #[Title('Agenda')] class extends Component
     public function professionals()
     {
         return ProfessionalProfile::query()->where('is_active', true)->orderBy('display_name')->get();
+    }
+
+    #[Computed]
+    public function appointmentDates(): array
+    {
+        $timezone = Auth::user()->currentTeam->timezone;
+        $month = CarbonImmutable::parse($this->selectedDate, $timezone)->startOfMonth();
+
+        return collect(range(0, $month->daysInMonth - 1))
+            ->map(function (int $offset) use ($month): array {
+                $date = $month->addDays($offset)->locale('pt_BR');
+
+                return [
+                    'value' => $date->toDateString(),
+                    'label' => ucfirst($date->isoFormat('dddd, D [de] MMMM')),
+                ];
+            })
+            ->all();
+    }
+
+    #[Computed]
+    public function selectedServiceDuration(): int
+    {
+        if ($this->serviceIds === []) {
+            return 0;
+        }
+
+        return (int) Service::query()
+            ->where('is_active', true)
+            ->whereIn('id', array_map('intval', $this->serviceIds))
+            ->sum('duration_minutes');
+    }
+
+    #[Computed]
+    public function availableTimeSlots(): array
+    {
+        if ($this->appointmentDate === '' || $this->professionalProfileId === '') {
+            return [];
+        }
+
+        return app(FindAvailableAppointmentSlots::class)->handle(
+            tenantId: Auth::user()->current_team_id,
+            professionalProfileId: (int) $this->professionalProfileId,
+            date: CarbonImmutable::parse($this->appointmentDate, Auth::user()->currentTeam->timezone),
+            durationMinutes: $this->selectedServiceDuration,
+        );
     }
 
     #[Computed]
@@ -165,6 +217,7 @@ new #[Title('Agenda')] class extends Component
             'month' => $date->subMonthNoOverflow()->toDateString(),
             default => $date->subDay()->toDateString(),
         };
+        $this->syncAppointmentDateToSelectedMonth();
         $this->refreshCalendar();
     }
 
@@ -177,12 +230,14 @@ new #[Title('Agenda')] class extends Component
             'month' => $date->addMonthNoOverflow()->toDateString(),
             default => $date->addDay()->toDateString(),
         };
+        $this->syncAppointmentDateToSelectedMonth();
         $this->refreshCalendar();
     }
 
     public function goToToday(): void
     {
         $this->selectedDate = now(Auth::user()->currentTeam->timezone)->toDateString();
+        $this->syncAppointmentDateToSelectedMonth();
         $this->refreshCalendar();
     }
 
@@ -191,6 +246,7 @@ new #[Title('Agenda')] class extends Component
         abort_unless(preg_match('/^\\d{4}-\\d{2}-\\d{2}$/', $date) === 1, 404);
 
         $this->selectedDate = CarbonImmutable::parse($date, Auth::user()->currentTeam->timezone)->toDateString();
+        $this->appointmentDate = $this->selectedDate;
         $this->viewMode = 'day';
         $this->refreshCalendar();
     }
@@ -201,12 +257,33 @@ new #[Title('Agenda')] class extends Component
 
         $timezone = Auth::user()->currentTeam->timezone;
         $this->selectedDate = CarbonImmutable::create(now($timezone)->year, $month, 1, 0, 0, 0, $timezone)->toDateString();
+        $this->appointmentDate = $this->selectedDate;
         $this->refreshCalendar();
     }
 
     public function updatedSelectedDate(): void
     {
+        if ($this->viewMode !== 'month') {
+            $this->appointmentDate = $this->selectedDate;
+        }
+
         $this->refreshCalendar();
+    }
+
+    public function updatedAppointmentDate(): void
+    {
+        $this->ensureSelectedTimeIsAvailable();
+    }
+
+    public function updatedProfessionalProfileId(): void
+    {
+        $this->ensureSelectedTimeIsAvailable();
+    }
+
+    public function updatedServiceIds(): void
+    {
+        unset($this->selectedServiceDuration, $this->availableTimeSlots);
+        $this->ensureSelectedTimeIsAvailable();
     }
 
     public function updatedViewMode(): void
@@ -234,7 +311,31 @@ new #[Title('Agenda')] class extends Component
 
     private function refreshCalendar(): void
     {
-        unset($this->appointments, $this->appointmentsByDay, $this->calendarDays);
+        unset($this->appointments, $this->appointmentsByDay, $this->calendarDays, $this->appointmentDates, $this->selectedServiceDuration, $this->availableTimeSlots);
+    }
+
+    private function syncAppointmentDateToSelectedMonth(): void
+    {
+        $timezone = Auth::user()->currentTeam->timezone;
+        $selectedMonth = CarbonImmutable::parse($this->selectedDate, $timezone)->format('Y-m');
+
+        if (! str_starts_with($this->appointmentDate, $selectedMonth)) {
+            $this->appointmentDate = CarbonImmutable::parse($this->selectedDate, $timezone)->startOfMonth()->toDateString();
+            $this->appointmentTime = '';
+        }
+    }
+
+    private function ensureSelectedTimeIsAvailable(): void
+    {
+        if ($this->appointmentTime === '') {
+            return;
+        }
+
+        $availableTimes = collect($this->availableTimeSlots)->pluck('value');
+
+        if (! $availableTimes->contains($this->appointmentTime)) {
+            $this->appointmentTime = '';
+        }
     }
 
     public function save(ScheduleAppointment $action): void
@@ -243,23 +344,36 @@ new #[Title('Agenda')] class extends Component
         $data = $this->validate([
             'customerId' => ['required', 'integer'],
             'professionalProfileId' => ['required', 'integer'],
-            'startsAt' => ['required', 'date'],
+            'appointmentDate' => ['required', 'date_format:Y-m-d', Rule::in(array_column($this->appointmentDates, 'value'))],
+            'appointmentTime' => ['required', 'date_format:H:i', Rule::in(array_column($this->availableTimeSlots, 'value'))],
             'serviceIds' => ['required', 'array', 'min:1'],
             'serviceIds.*' => ['integer'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
         $timezone = Auth::user()->currentTeam->timezone;
-        $appointment = $action->handle(new ScheduleAppointmentData(
-            tenantId: Auth::user()->current_team_id,
-            customerId: (int) $data['customerId'],
-            professionalProfileId: (int) $data['professionalProfileId'],
-            actorId: Auth::id(),
-            startsAt: CarbonImmutable::parse($data['startsAt'], $timezone)->utc(),
-            serviceIds: array_map('intval', $data['serviceIds']),
-            notes: $data['notes'] ?: null,
-        ));
+        try {
+            $appointment = $action->handle(new ScheduleAppointmentData(
+                tenantId: Auth::user()->current_team_id,
+                customerId: (int) $data['customerId'],
+                professionalProfileId: (int) $data['professionalProfileId'],
+                actorId: Auth::id(),
+                startsAt: CarbonImmutable::parse($data['appointmentDate'].' '.$data['appointmentTime'], $timezone)->utc(),
+                serviceIds: array_map('intval', $data['serviceIds']),
+                notes: $data['notes'] ?: null,
+            ));
+        } catch (ValidationException $exception) {
+            $errors = $exception->errors();
+
+            if (isset($errors['startsAt'])) {
+                $errors['appointmentTime'] = $errors['startsAt'];
+                unset($errors['startsAt']);
+            }
+
+            throw ValidationException::withMessages($errors);
+        }
         $this->selectedDate = $appointment->starts_at->setTimezone($timezone)->toDateString();
-        $this->reset('customerId', 'serviceIds', 'notes');
+        $this->appointmentDate = $this->selectedDate;
+        $this->reset('customerId', 'serviceIds', 'appointmentTime', 'notes');
         $this->refreshCalendar();
         $this->dispatch('close-modal', name: 'schedule-appointment');
         Flux::toast(variant: 'success', text: 'Agendamento criado com sucesso.');
