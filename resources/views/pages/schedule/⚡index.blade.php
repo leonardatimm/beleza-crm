@@ -261,6 +261,7 @@ new #[Title('Agenda')] class extends Component
         $this->selectedDate = $appointment->starts_at->setTimezone($timezone)->toDateString();
         $this->reset('customerId', 'serviceIds', 'notes');
         $this->refreshCalendar();
+        $this->dispatch('close-modal', name: 'schedule-appointment');
         Flux::toast(variant: 'success', text: 'Agendamento criado com sucesso.');
     }
 
@@ -297,29 +298,35 @@ new #[Title('Agenda')] class extends Component
     </flux:radio.group>
 
     @if($viewMode === 'month')
-        <div class="w-full max-w-sm">
-            <p class="mb-2 text-sm font-medium text-zinc-800 dark:text-zinc-200">Mês da agenda</p>
-            <div class="flex items-center gap-2">
-                <flux:button size="sm" variant="ghost" square icon="chevron-left" wire:click="previousPeriod" aria-label="Mês anterior" />
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div class="w-full max-w-sm">
+                <p class="mb-2 text-sm font-medium text-zinc-800 dark:text-zinc-200">Mês da agenda</p>
+                <div class="flex items-center gap-2">
+                    <flux:button size="sm" variant="ghost" square icon="chevron-left" wire:click="previousPeriod" aria-label="Mês anterior" />
 
-                <flux:dropdown position="bottom" align="center" class="min-w-0 flex-1">
-                    <button type="button" class="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-violet-200 bg-white px-4 font-semibold text-zinc-900 shadow-sm transition hover:border-violet-400 hover:bg-violet-50 focus:outline-none focus:ring-2 focus:ring-violet-500 dark:border-violet-900 dark:bg-zinc-950 dark:text-zinc-50 dark:hover:border-violet-700 dark:hover:bg-violet-950/40">
-                        <span>{{ $this->monthPickerLabel }}</span>
-                        <flux:icon name="chevron-down" variant="mini" class="size-4 text-violet-600 dark:text-violet-400" />
-                    </button>
+                    <flux:dropdown position="bottom" align="center" class="min-w-0 flex-1">
+                        <button type="button" class="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-violet-200 bg-white px-4 font-semibold text-zinc-900 shadow-sm transition hover:border-violet-400 hover:bg-violet-50 focus:outline-none focus:ring-2 focus:ring-violet-500 dark:border-violet-900 dark:bg-zinc-950 dark:text-zinc-50 dark:hover:border-violet-700 dark:hover:bg-violet-950/40">
+                            <span>{{ $this->monthPickerLabel }}</span>
+                            <flux:icon name="chevron-down" variant="mini" class="size-4 text-violet-600 dark:text-violet-400" />
+                        </button>
 
-                    <flux:menu class="min-w-52">
-                        <flux:menu.heading>Meses de {{ now(auth()->user()->currentTeam->timezone)->year }}</flux:menu.heading>
-                        @foreach($this->monthsOfCurrentYear as $month)
-                            <flux:menu.item as="button" type="button" wire:click="selectMonth({{ $month['number'] }})" :class="$month['isSelected'] ? 'bg-violet-50 text-violet-800 dark:bg-violet-950/60 dark:text-violet-200' : ''">
-                                {{ $month['label'] }}
-                            </flux:menu.item>
-                        @endforeach
-                    </flux:menu>
-                </flux:dropdown>
+                        <flux:menu class="min-w-52">
+                            <flux:menu.heading>Meses de {{ now(auth()->user()->currentTeam->timezone)->year }}</flux:menu.heading>
+                            @foreach($this->monthsOfCurrentYear as $month)
+                                <flux:menu.item as="button" type="button" wire:click="selectMonth({{ $month['number'] }})" :class="$month['isSelected'] ? 'bg-violet-50 text-violet-800 dark:bg-violet-950/60 dark:text-violet-200' : ''">
+                                    {{ $month['label'] }}
+                                </flux:menu.item>
+                            @endforeach
+                        </flux:menu>
+                    </flux:dropdown>
 
-                <flux:button size="sm" variant="ghost" square icon="chevron-right" wire:click="nextPeriod" aria-label="Próximo mês" />
+                    <flux:button size="sm" variant="ghost" square icon="chevron-right" wire:click="nextPeriod" aria-label="Próximo mês" />
+                </div>
             </div>
+
+            <flux:modal.trigger name="schedule-appointment">
+                <flux:button variant="primary" icon="calendar-days">Novo agendamento</flux:button>
+            </flux:modal.trigger>
         </div>
     @else
         <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
@@ -334,7 +341,7 @@ new #[Title('Agenda')] class extends Component
         </div>
     @endif
 
-    <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_26rem]">
+    <div @class(['grid gap-6', 'xl:grid-cols-[minmax(0,1fr)_26rem]' => $viewMode !== 'month'])>
         <div>
             @if($viewMode === 'day')
                 <div class="space-y-3">
@@ -431,14 +438,19 @@ new #[Title('Agenda')] class extends Component
                 </div>
             @endif
         </div>
-        <form wire:submit="save" class="h-fit space-y-4 rounded-2xl border border-violet-100 bg-white p-5 shadow-sm dark:border-violet-950 dark:bg-zinc-950">
-            <flux:heading size="lg">Novo agendamento</flux:heading>
-            <flux:select wire:model="customerId" label="Cliente" placeholder="Selecione" required>@foreach($this->customers as $customer)<flux:select.option value="{{ $customer->id }}">{{ $customer->name }}</flux:select.option>@endforeach</flux:select>
-            <flux:select wire:model="professionalProfileId" label="Profissional" required>@foreach($this->professionals as $professional)<flux:select.option value="{{ $professional->id }}">{{ $professional->display_name }}</flux:select.option>@endforeach</flux:select>
-            <flux:input wire:model="startsAt" type="datetime-local" label="Data e hora" required />
-            <fieldset><legend class="mb-2 text-sm font-medium text-zinc-800 dark:text-zinc-200">Serviços</legend><div class="max-h-48 space-y-2 overflow-auto rounded-xl border border-zinc-200 p-3 dark:border-violet-900">@forelse($this->services as $service)<label class="flex cursor-pointer items-center justify-between gap-3 text-sm"><span><input class="mr-2 accent-violet-600" type="checkbox" wire:model="serviceIds" value="{{ $service->id }}">{{ $service->name }}</span><span class="text-zinc-500 dark:text-zinc-400">{{ $service->duration_minutes }} min · R$ {{ number_format($service->price_cents / 100, 2, ',', '.') }}</span></label>@empty<p class="text-sm text-zinc-500 dark:text-zinc-400">Cadastre serviços antes de agendar.</p>@endforelse</div>@error('serviceIds')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror</fieldset>
-            <flux:textarea wire:model="notes" label="Observações" rows="2" />
-            <flux:button class="w-full" variant="primary" type="submit" icon="calendar-days">Criar agendamento</flux:button>
-        </form>
+        @if($viewMode !== 'month')
+            <x-schedule.appointment-form class="h-fit rounded-2xl border border-violet-100 bg-white p-5 shadow-sm dark:border-violet-950 dark:bg-zinc-950" />
+        @endif
     </div>
+
+    @if($viewMode === 'month')
+        <flux:modal name="schedule-appointment" :show="$errors->isNotEmpty()" focusable class="max-w-xl">
+            <div class="mb-5">
+                <flux:heading size="lg">Novo agendamento</flux:heading>
+                <flux:subheading>Preencha os dados para reservar um horário.</flux:subheading>
+            </div>
+
+            <x-schedule.appointment-form :show-heading="false" />
+        </flux:modal>
+    @endif
 </section>
