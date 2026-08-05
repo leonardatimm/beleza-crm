@@ -23,8 +23,6 @@ new #[Title('Agenda')] class extends Component
 {
     public string $selectedDate = '';
 
-    public string $selectedMonth = '';
-
     public string $viewMode = 'day';
 
     public string $startsAt = '';
@@ -44,7 +42,6 @@ new #[Title('Agenda')] class extends Component
         $timezone = Auth::user()->currentTeam->timezone;
         $today = now($timezone);
         $this->selectedDate = $today->toDateString();
-        $this->selectedMonth = $today->format('Y-m');
         $this->startsAt = $today->addHour()->startOfHour()->format('Y-m-d\TH:i');
         $profile = ProfessionalProfile::query()->where('user_id', Auth::id())->first();
         $this->professionalProfileId = (string) ($profile?->id ?? ProfessionalProfile::query()->value('id') ?? '');
@@ -132,6 +129,33 @@ new #[Title('Agenda')] class extends Component
         )->locale('pt_BR')->isoFormat('MMMM [de] YYYY'));
     }
 
+    #[Computed]
+    public function monthPickerLabel(): string
+    {
+        $timezone = Auth::user()->currentTeam->timezone;
+        $date = CarbonImmutable::parse($this->selectedDate, $timezone)->locale('pt_BR');
+
+        return $date->year === now($timezone)->year
+            ? ucfirst($date->isoFormat('MMMM'))
+            : ucfirst($date->isoFormat('MMMM [de] YYYY'));
+    }
+
+    #[Computed]
+    public function monthsOfCurrentYear(): array
+    {
+        $timezone = Auth::user()->currentTeam->timezone;
+        $currentYear = now($timezone)->year;
+        $selectedDate = CarbonImmutable::parse($this->selectedDate, $timezone);
+
+        return collect(range(1, 12))
+            ->map(fn (int $month): array => [
+                'number' => $month,
+                'label' => ucfirst(CarbonImmutable::create($currentYear, $month, 1, 0, 0, 0, $timezone)->locale('pt_BR')->isoFormat('MMMM')),
+                'isSelected' => $selectedDate->year === $currentYear && $selectedDate->month === $month,
+            ])
+            ->all();
+    }
+
     public function previousPeriod(): void
     {
         $timezone = Auth::user()->currentTeam->timezone;
@@ -141,7 +165,6 @@ new #[Title('Agenda')] class extends Component
             'month' => $date->subMonthNoOverflow()->toDateString(),
             default => $date->subDay()->toDateString(),
         };
-        $this->syncSelectedMonth();
         $this->refreshCalendar();
     }
 
@@ -154,14 +177,12 @@ new #[Title('Agenda')] class extends Component
             'month' => $date->addMonthNoOverflow()->toDateString(),
             default => $date->addDay()->toDateString(),
         };
-        $this->syncSelectedMonth();
         $this->refreshCalendar();
     }
 
     public function goToToday(): void
     {
         $this->selectedDate = now(Auth::user()->currentTeam->timezone)->toDateString();
-        $this->syncSelectedMonth();
         $this->refreshCalendar();
     }
 
@@ -170,27 +191,21 @@ new #[Title('Agenda')] class extends Component
         abort_unless(preg_match('/^\\d{4}-\\d{2}-\\d{2}$/', $date) === 1, 404);
 
         $this->selectedDate = CarbonImmutable::parse($date, Auth::user()->currentTeam->timezone)->toDateString();
-        $this->syncSelectedMonth();
         $this->viewMode = 'day';
+        $this->refreshCalendar();
+    }
+
+    public function selectMonth(int $month): void
+    {
+        abort_unless($month >= 1 && $month <= 12, 404);
+
+        $timezone = Auth::user()->currentTeam->timezone;
+        $this->selectedDate = CarbonImmutable::create(now($timezone)->year, $month, 1, 0, 0, 0, $timezone)->toDateString();
         $this->refreshCalendar();
     }
 
     public function updatedSelectedDate(): void
     {
-        $this->syncSelectedMonth();
-        $this->refreshCalendar();
-    }
-
-    public function updatedSelectedMonth(): void
-    {
-        $this->validateOnly('selectedMonth', [
-            'selectedMonth' => ['required', 'date_format:Y-m'],
-        ]);
-
-        $this->selectedDate = CarbonImmutable::parse(
-            $this->selectedMonth.'-01',
-            Auth::user()->currentTeam->timezone,
-        )->toDateString();
         $this->refreshCalendar();
     }
 
@@ -222,14 +237,6 @@ new #[Title('Agenda')] class extends Component
         unset($this->appointments, $this->appointmentsByDay, $this->calendarDays);
     }
 
-    private function syncSelectedMonth(): void
-    {
-        $this->selectedMonth = CarbonImmutable::parse(
-            $this->selectedDate,
-            Auth::user()->currentTeam->timezone,
-        )->format('Y-m');
-    }
-
     public function save(ScheduleAppointment $action): void
     {
         Gate::authorize('create', Appointment::class);
@@ -252,7 +259,6 @@ new #[Title('Agenda')] class extends Component
             notes: $data['notes'] ?: null,
         ));
         $this->selectedDate = $appointment->starts_at->setTimezone($timezone)->toDateString();
-        $this->syncSelectedMonth();
         $this->reset('customerId', 'serviceIds', 'notes');
         $this->refreshCalendar();
         Flux::toast(variant: 'success', text: 'Agendamento criado com sucesso.');
@@ -279,28 +285,9 @@ new #[Title('Agenda')] class extends Component
 }; ?>
 
 <section class="mx-auto w-full max-w-7xl space-y-6">
-    <div class="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-            <flux:heading size="xl">Agenda</flux:heading>
-            <flux:text>Organize seus atendimentos por dia, semana ou mês.</flux:text>
-        </div>
-
-        <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
-            @if($viewMode === 'month')
-                <div class="w-full sm:w-52">
-                    <flux:input wire:model.live="selectedMonth" type="month" label="Mês da agenda" />
-                </div>
-            @else
-                <div class="w-full sm:w-48">
-                    <flux:input wire:model.live="selectedDate" type="date" label="Data de referência" />
-                </div>
-            @endif
-            <div class="flex items-center gap-1">
-                <flux:button size="sm" variant="ghost" square icon="chevron-left" wire:click="previousPeriod" aria-label="Período anterior" />
-                <flux:button size="sm" variant="ghost" wire:click="goToToday">Hoje</flux:button>
-                <flux:button size="sm" variant="ghost" square icon="chevron-right" wire:click="nextPeriod" aria-label="Próximo período" />
-            </div>
-        </div>
+    <div>
+        <flux:heading size="xl">Agenda</flux:heading>
+        <flux:text>Organize seus atendimentos por dia, semana ou mês.</flux:text>
     </div>
 
     <flux:radio.group variant="segmented" class="w-full sm:w-fit" wire:model.live="viewMode">
@@ -308,6 +295,44 @@ new #[Title('Agenda')] class extends Component
         <flux:radio value="week" icon="calendar">Semana</flux:radio>
         <flux:radio value="month" icon="squares-2x2">Mês</flux:radio>
     </flux:radio.group>
+
+    @if($viewMode === 'month')
+        <div class="w-full max-w-sm">
+            <p class="mb-2 text-sm font-medium text-zinc-800 dark:text-zinc-200">Mês da agenda</p>
+            <div class="flex items-center gap-2">
+                <flux:button size="sm" variant="ghost" square icon="chevron-left" wire:click="previousPeriod" aria-label="Mês anterior" />
+
+                <flux:dropdown position="bottom" align="center" class="min-w-0 flex-1">
+                    <button type="button" class="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-violet-200 bg-white px-4 font-semibold text-zinc-900 shadow-sm transition hover:border-violet-400 hover:bg-violet-50 focus:outline-none focus:ring-2 focus:ring-violet-500 dark:border-violet-900 dark:bg-zinc-950 dark:text-zinc-50 dark:hover:border-violet-700 dark:hover:bg-violet-950/40">
+                        <span>{{ $this->monthPickerLabel }}</span>
+                        <flux:icon name="chevron-down" variant="mini" class="size-4 text-violet-600 dark:text-violet-400" />
+                    </button>
+
+                    <flux:menu class="min-w-52">
+                        <flux:menu.heading>Meses de {{ now(auth()->user()->currentTeam->timezone)->year }}</flux:menu.heading>
+                        @foreach($this->monthsOfCurrentYear as $month)
+                            <flux:menu.item as="button" type="button" wire:click="selectMonth({{ $month['number'] }})" :class="$month['isSelected'] ? 'bg-violet-50 text-violet-800 dark:bg-violet-950/60 dark:text-violet-200' : ''">
+                                {{ $month['label'] }}
+                            </flux:menu.item>
+                        @endforeach
+                    </flux:menu>
+                </flux:dropdown>
+
+                <flux:button size="sm" variant="ghost" square icon="chevron-right" wire:click="nextPeriod" aria-label="Próximo mês" />
+            </div>
+        </div>
+    @else
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div class="w-full sm:w-48">
+                <flux:input wire:model.live="selectedDate" type="date" label="Data de referência" />
+            </div>
+            <div class="flex items-center gap-1">
+                <flux:button size="sm" variant="ghost" square icon="chevron-left" wire:click="previousPeriod" aria-label="Período anterior" />
+                <flux:button size="sm" variant="ghost" wire:click="goToToday">Hoje</flux:button>
+                <flux:button size="sm" variant="ghost" square icon="chevron-right" wire:click="nextPeriod" aria-label="Próximo período" />
+            </div>
+        </div>
+    @endif
 
     <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_26rem]">
         <div>
