@@ -23,6 +23,8 @@ new #[Title('Agenda')] class extends Component
 {
     public string $selectedDate = '';
 
+    public string $selectedMonth = '';
+
     public string $viewMode = 'day';
 
     public string $startsAt = '';
@@ -42,6 +44,7 @@ new #[Title('Agenda')] class extends Component
         $timezone = Auth::user()->currentTeam->timezone;
         $today = now($timezone);
         $this->selectedDate = $today->toDateString();
+        $this->selectedMonth = $today->format('Y-m');
         $this->startsAt = $today->addHour()->startOfHour()->format('Y-m-d\TH:i');
         $profile = ProfessionalProfile::query()->where('user_id', Auth::id())->first();
         $this->professionalProfileId = (string) ($profile?->id ?? ProfessionalProfile::query()->value('id') ?? '');
@@ -120,6 +123,15 @@ new #[Title('Agenda')] class extends Component
         );
     }
 
+    #[Computed]
+    public function monthTitle(): string
+    {
+        return ucfirst(CarbonImmutable::parse(
+            $this->selectedDate,
+            Auth::user()->currentTeam->timezone,
+        )->locale('pt_BR')->isoFormat('MMMM [de] YYYY'));
+    }
+
     public function previousPeriod(): void
     {
         $timezone = Auth::user()->currentTeam->timezone;
@@ -129,6 +141,7 @@ new #[Title('Agenda')] class extends Component
             'month' => $date->subMonthNoOverflow()->toDateString(),
             default => $date->subDay()->toDateString(),
         };
+        $this->syncSelectedMonth();
         $this->refreshCalendar();
     }
 
@@ -141,12 +154,14 @@ new #[Title('Agenda')] class extends Component
             'month' => $date->addMonthNoOverflow()->toDateString(),
             default => $date->addDay()->toDateString(),
         };
+        $this->syncSelectedMonth();
         $this->refreshCalendar();
     }
 
     public function goToToday(): void
     {
         $this->selectedDate = now(Auth::user()->currentTeam->timezone)->toDateString();
+        $this->syncSelectedMonth();
         $this->refreshCalendar();
     }
 
@@ -155,12 +170,27 @@ new #[Title('Agenda')] class extends Component
         abort_unless(preg_match('/^\\d{4}-\\d{2}-\\d{2}$/', $date) === 1, 404);
 
         $this->selectedDate = CarbonImmutable::parse($date, Auth::user()->currentTeam->timezone)->toDateString();
+        $this->syncSelectedMonth();
         $this->viewMode = 'day';
         $this->refreshCalendar();
     }
 
     public function updatedSelectedDate(): void
     {
+        $this->syncSelectedMonth();
+        $this->refreshCalendar();
+    }
+
+    public function updatedSelectedMonth(): void
+    {
+        $this->validateOnly('selectedMonth', [
+            'selectedMonth' => ['required', 'date_format:Y-m'],
+        ]);
+
+        $this->selectedDate = CarbonImmutable::parse(
+            $this->selectedMonth.'-01',
+            Auth::user()->currentTeam->timezone,
+        )->toDateString();
         $this->refreshCalendar();
     }
 
@@ -192,6 +222,14 @@ new #[Title('Agenda')] class extends Component
         unset($this->appointments, $this->appointmentsByDay, $this->calendarDays);
     }
 
+    private function syncSelectedMonth(): void
+    {
+        $this->selectedMonth = CarbonImmutable::parse(
+            $this->selectedDate,
+            Auth::user()->currentTeam->timezone,
+        )->format('Y-m');
+    }
+
     public function save(ScheduleAppointment $action): void
     {
         Gate::authorize('create', Appointment::class);
@@ -214,6 +252,7 @@ new #[Title('Agenda')] class extends Component
             notes: $data['notes'] ?: null,
         ));
         $this->selectedDate = $appointment->starts_at->setTimezone($timezone)->toDateString();
+        $this->syncSelectedMonth();
         $this->reset('customerId', 'serviceIds', 'notes');
         $this->refreshCalendar();
         Flux::toast(variant: 'success', text: 'Agendamento criado com sucesso.');
@@ -247,9 +286,15 @@ new #[Title('Agenda')] class extends Component
         </div>
 
         <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div class="w-full sm:w-48">
-                <flux:input wire:model.live="selectedDate" type="date" label="Data de referência" />
-            </div>
+            @if($viewMode === 'month')
+                <div class="w-full sm:w-52">
+                    <flux:input wire:model.live="selectedMonth" type="month" label="Mês da agenda" />
+                </div>
+            @else
+                <div class="w-full sm:w-48">
+                    <flux:input wire:model.live="selectedDate" type="date" label="Data de referência" />
+                </div>
+            @endif
             <div class="flex items-center gap-1">
                 <flux:button size="sm" variant="ghost" square icon="chevron-left" wire:click="previousPeriod" aria-label="Período anterior" />
                 <flux:button size="sm" variant="ghost" wire:click="goToToday">Hoje</flux:button>
@@ -304,7 +349,7 @@ new #[Title('Agenda')] class extends Component
                 </div>
             @elseif($viewMode === 'week')
                 <div class="overflow-x-auto rounded-2xl border border-violet-100 bg-white shadow-sm dark:border-violet-950 dark:bg-zinc-950">
-                    <div class="grid min-w-[52rem] grid-cols-7 divide-x divide-violet-100 dark:divide-violet-950">
+                    <div class="grid divide-x divide-violet-100 dark:divide-violet-950" style="grid-template-columns: repeat(7, minmax(7.5rem, 1fr)); min-width: 52rem;">
                         @foreach($this->calendarDays as $day)
                             <section class="min-h-[26rem] p-3" wire:key="week-day-{{ $day['key'] }}">
                                 <button type="button" wire:click="showDay('{{ $day['key'] }}')" class="mb-3 w-full rounded-lg p-2 text-left hover:bg-violet-50 dark:hover:bg-violet-950/40">
@@ -328,24 +373,31 @@ new #[Title('Agenda')] class extends Component
                 </div>
             @else
                 <div class="overflow-x-auto rounded-2xl border border-violet-100 bg-white shadow-sm dark:border-violet-950 dark:bg-zinc-950">
-                    <div class="grid min-w-[52rem] grid-cols-7 border-b border-violet-100 dark:border-violet-950">
+                    <div class="flex items-center justify-between border-b border-violet-100 px-4 py-3 dark:border-violet-950" style="min-width: 52rem;">
+                        <div>
+                            <p class="text-sm font-semibold text-zinc-900 dark:text-zinc-50">{{ $this->monthTitle }}</p>
+                            <p class="text-xs text-zinc-500 dark:text-zinc-400">Clique em um dia para abrir os atendimentos detalhados.</p>
+                        </div>
+                        <flux:badge color="violet">{{ $this->appointments->count() }} atendimentos</flux:badge>
+                    </div>
+                    <div class="grid border-b border-violet-100 bg-zinc-50/70 dark:border-violet-950 dark:bg-zinc-900/40" style="grid-template-columns: repeat(7, minmax(7.5rem, 1fr)); min-width: 52rem;">
                         @foreach(['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'] as $weekday)
                             <p class="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">{{ $weekday }}</p>
                         @endforeach
                     </div>
-                    <div class="grid min-w-[52rem] grid-cols-7">
+                    <div class="grid" style="grid-template-columns: repeat(7, minmax(7.5rem, 1fr)); min-width: 52rem;">
                         @foreach($this->calendarDays as $day)
-                            <section @class(['min-h-36 border-b border-r border-violet-100 p-2 dark:border-violet-950', 'bg-zinc-50/70 dark:bg-zinc-900/40' => ! $day['isCurrentMonth']]) wire:key="month-day-{{ $day['key'] }}">
-                                <button type="button" wire:click="showDay('{{ $day['key'] }}')" @class(['flex size-7 items-center justify-center rounded-full text-sm font-medium hover:bg-violet-100 dark:hover:bg-violet-900', 'bg-violet-600 text-white hover:bg-violet-600 dark:hover:bg-violet-600' => $day['isToday'], 'text-zinc-400 dark:text-zinc-600' => ! $day['isCurrentMonth'], 'text-zinc-900 dark:text-zinc-50' => $day['isCurrentMonth'] && ! $day['isToday']])>{{ $day['day'] }}</button>
-                                <div class="mt-2 space-y-1">
+                            <section @class(['min-h-40 border-b border-r border-violet-100 p-2 transition-colors hover:bg-violet-50/40 dark:border-violet-950 dark:hover:bg-violet-950/20', 'bg-zinc-50/70 dark:bg-zinc-900/40' => ! $day['isCurrentMonth']]) wire:key="month-day-{{ $day['key'] }}">
+                                <button type="button" wire:click="showDay('{{ $day['key'] }}')" @class(['flex size-7 items-center justify-center rounded-full text-sm font-medium transition-colors hover:bg-violet-100 dark:hover:bg-violet-900', 'bg-violet-600 text-white hover:bg-violet-600 dark:hover:bg-violet-600' => $day['isToday'], 'text-zinc-400 dark:text-zinc-600' => ! $day['isCurrentMonth'], 'text-zinc-900 dark:text-zinc-50' => $day['isCurrentMonth'] && ! $day['isToday']])>{{ $day['day'] }}</button>
+                                <div class="mt-2 space-y-1.5">
                                     @foreach($this->appointmentsByDay->get($day['key'], collect())->take(3) as $appointment)
-                                        <button type="button" wire:click="showDay('{{ $day['key'] }}')" class="flex w-full gap-1 rounded-md bg-violet-50 px-1.5 py-1 text-left text-xs hover:bg-violet-100 dark:bg-violet-950/50 dark:hover:bg-violet-900/60" wire:key="month-appointment-{{ $appointment->id }}">
-                                            <span class="shrink-0 font-bold text-violet-700 dark:text-violet-300">{{ $appointment->starts_at->setTimezone(auth()->user()->currentTeam->timezone)->format('H:i') }}</span>
-                                            <span class="truncate text-zinc-700 dark:text-zinc-200">{{ $appointment->customer->name }}</span>
+                                        <button type="button" wire:click="showDay('{{ $day['key'] }}')" @class(['flex w-full items-center gap-1.5 rounded-md border-l-2 px-2 py-1.5 text-left text-xs transition-colors', 'border-emerald-500 bg-emerald-50 text-emerald-900 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-100 dark:hover:bg-emerald-950/70' => $appointment->status === AppointmentStatus::Completed, 'border-zinc-400 bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700' => $appointment->status === AppointmentStatus::Cancelled, 'border-violet-500 bg-violet-50 text-violet-950 hover:bg-violet-100 dark:bg-violet-950/50 dark:text-violet-100 dark:hover:bg-violet-900/60' => ! in_array($appointment->status, [AppointmentStatus::Completed, AppointmentStatus::Cancelled], true)]) wire:key="month-appointment-{{ $appointment->id }}">
+                                            <span class="shrink-0 font-bold">{{ $appointment->starts_at->setTimezone(auth()->user()->currentTeam->timezone)->format('H:i') }}</span>
+                                            <span class="truncate font-medium">{{ $appointment->customer->name }}</span>
                                         </button>
                                     @endforeach
                                     @if($this->appointmentsByDay->get($day['key'], collect())->count() > 3)
-                                        <button type="button" wire:click="showDay('{{ $day['key'] }}')" class="text-xs font-medium text-violet-700 hover:underline dark:text-violet-300">+ {{ $this->appointmentsByDay->get($day['key'])->count() - 3 }} atendimentos</button>
+                                        <button type="button" wire:click="showDay('{{ $day['key'] }}')" class="px-1 text-xs font-semibold text-violet-700 hover:underline dark:text-violet-300">+ {{ $this->appointmentsByDay->get($day['key'])->count() - 3 }} atendimentos</button>
                                     @endif
                                 </div>
                             </section>
