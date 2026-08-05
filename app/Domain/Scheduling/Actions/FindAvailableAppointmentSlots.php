@@ -17,10 +17,7 @@ class FindAvailableAppointmentSlots
      */
     public function handle(int $tenantId, int $professionalProfileId, CarbonImmutable $date, int $durationMinutes): array
     {
-        if ($durationMinutes <= 0) {
-            return $this->halfHourSlots();
-        }
-
+        $durationMinutes = max(30, $durationMinutes);
         $timezone = Team::query()->findOrFail($tenantId)->timezone;
         $dayStart = $date->setTimezone($timezone)->startOfDay();
         $dayEnd = $dayStart->addDay();
@@ -72,19 +69,6 @@ class FindAvailableAppointmentSlots
         }
 
         return $slots;
-    }
-
-    /** @return array<int, array{value: string, label: string}> */
-    private function halfHourSlots(): array
-    {
-        return collect(range(0, 47))
-            ->map(function (int $slot): array {
-                $minutes = $slot * 30;
-                $time = sprintf('%02d:%02d', intdiv($minutes, 60), $minutes % 60);
-
-                return ['value' => $time, 'label' => $time];
-            })
-            ->all();
     }
 
     /** @param Collection<int, ProfessionalAvailability> $availabilities */

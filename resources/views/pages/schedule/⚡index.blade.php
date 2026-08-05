@@ -42,6 +42,14 @@ new #[Title('Agenda')] class extends Component
 
     public array $cancelReasons = [];
 
+    protected array $validationAttributes = [
+        'appointmentTime' => 'horário',
+        'appointmentDate' => 'data',
+        'customerId' => 'cliente',
+        'professionalProfileId' => 'profissional',
+        'serviceIds' => 'serviços',
+    ];
+
     public function mount(): void
     {
         $timezone = Auth::user()->currentTeam->timezone;
@@ -272,11 +280,13 @@ new #[Title('Agenda')] class extends Component
 
     public function updatedAppointmentDate(): void
     {
+        unset($this->availableTimeSlots);
         $this->ensureSelectedTimeIsAvailable();
     }
 
     public function updatedProfessionalProfileId(): void
     {
+        unset($this->availableTimeSlots);
         $this->ensureSelectedTimeIsAvailable();
     }
 

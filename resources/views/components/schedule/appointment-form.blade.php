@@ -29,7 +29,7 @@
             @forelse($this->services as $service)
                 <label class="flex cursor-pointer items-center justify-between gap-3 text-sm">
                     <span>
-                        <input class="mr-2 accent-violet-600" type="checkbox" wire:model="serviceIds" value="{{ $service->id }}">
+                        <input class="mr-2 accent-violet-600" type="checkbox" wire:model.live="serviceIds" value="{{ $service->id }}">
                         {{ $service->name }}
                     </span>
                     <span class="text-zinc-500 dark:text-zinc-400">{{ $service->duration_minutes }} min · R$ {{ number_format($service->price_cents / 100, 2, ',', '.') }}</span>
@@ -54,9 +54,6 @@
         @else
             <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Os horários são exibidos a cada 30 minutos. Selecione um serviço para validar a duração.</p>
         @endif
-        @error('appointmentTime')
-            <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
-        @enderror
     </div>
 
     <flux:textarea wire:model="notes" label="Observações" rows="2" />
